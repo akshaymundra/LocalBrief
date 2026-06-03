@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+# Added by code-review-graph
+.code-review-graph/
+# Agent / Claude files
+.claude/
+.mcp.json
+CLAUDE.md
+AGENTS.md
+
+package-lock.json 
+.vscode

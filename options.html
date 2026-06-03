@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page Chat — Settings</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --accent: #8250df;
+        --accent-hover: #6e40c9;
+        --border: #d0d7de;
+        --muted: #59636e;
+        --bg: #ffffff;
+        --bg-soft: #f6f8fa;
+        --text: #1f2328;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --border: #363b42;
+          --muted: #9198a1;
+          --bg: #1c2128;
+          --bg-soft: #22272e;
+          --text: #e6edf3;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--text);
+        background: var(--bg);
+      }
+      .wrap { max-width: 640px; margin: 0 auto; padding: 32px 24px 64px; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      h1 .spark { color: var(--accent); }
+      .subtitle { color: var(--muted); margin: 0 0 28px; font-size: 13px; }
+      section {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg-soft);
+        padding: 18px 20px;
+        margin-bottom: 20px;
+      }
+      h2 { font-size: 15px; margin: 0 0 12px; }
+      label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 6px; }
+      label:first-of-type { margin-top: 0; }
+      .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+      input[type="password"], input[type="text"], select, textarea {
+        width: 100%;
+        font: inherit;
+        font-size: 13px;
+        padding: 8px 11px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+        color: inherit;
+        outline: none;
+      }
+      input:focus, select:focus, textarea:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(130, 80, 223, 0.15);
+      }
+      textarea { min-height: 120px; resize: vertical; }
+      .key-row { display: flex; gap: 8px; align-items: center; }
+      .key-row input { flex: 1; }
+      .key-status { font-size: 12px; color: var(--muted); margin-top: 5px; min-height: 16px; }
+      .key-status.saved { color: #1a7f37; }
+      button {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+      }
+      button:hover { background: var(--accent-hover); }
+      button.ghost {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+      }
+      button.ghost:hover { background: rgba(130, 80, 223, 0.1); }
+      button.small { padding: 6px 12px; font-size: 12px; }
+      .footer { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+      .saved-flash { color: #1a7f37; font-size: 13px; opacity: 0; transition: opacity 0.2s; }
+      .saved-flash.show { opacity: 1; }
+      .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1><span class="spark">✦</span> Page Chat — Settings</h1>
+      <p class="subtitle">Local Ollama needs no key. Cloud providers need an API key, kept on this device only and auto-removed after 7 days.</p>
+
+      <section>
+        <h2>API keys</h2>
+        <label for="anthropic-key">Anthropic (Claude) <span class="hint">— console.anthropic.com</span></label>
+        <div class="key-row">
+          <input type="password" id="anthropic-key" placeholder="sk-ant-…" autocomplete="off" />
+          <button class="ghost small" id="anthropic-clear" type="button">Clear</button>
+        </div>
+        <div class="key-status" id="anthropic-status"></div>
+
+        <label for="openai-key">OpenAI (ChatGPT) <span class="hint">— platform.openai.com</span></label>
+        <div class="key-row">
+          <input type="password" id="openai-key" placeholder="sk-…" autocomplete="off" />
+          <button class="ghost small" id="openai-clear" type="button">Clear</button>
+        </div>
+        <div class="key-status" id="openai-status"></div>
+        <p class="note">Leaving a field blank keeps the existing saved key. Keys are stored in this browser profile only (chrome.storage.local), never synced.</p>
+      </section>
+
+      <section>
+        <h2>Default model</h2>
+        <select id="default-model"></select>
+      </section>
+
+      <section>
+        <h2>System prompt</h2>
+        <textarea id="system-prompt" spellcheck="false"></textarea>
+        <div class="footer">
+          <button class="ghost small" id="reset-prompt" type="button">Reset to default</button>
+        </div>
+      </section>
+
+      <div class="footer">
+        <button id="save" type="button">Save</button>
+        <span class="saved-flash" id="saved-flash">Saved ✓</span>
+      </div>
+    </div>
+    <script type="module" src="/src/options.ts"></script>
+  </body>
+</html>
