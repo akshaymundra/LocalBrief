@@ -84,6 +84,14 @@ export function createDrawer(): Drawer {
   peek.innerHTML = logo;
   shadow.appendChild(peek);
 
+  // Keep keystrokes inside the drawer: many sites bind global hotkeys on
+  // document (e.g. "f"/"/" on go.dev, GitHub, YouTube) — typing in the chat
+  // must not trigger them. Shadow listeners run before the host, so the
+  // drawer's own Escape/Enter handling still works.
+  for (const type of ["keydown", "keypress", "keyup"] as const) {
+    host.addEventListener(type, (e) => e.stopPropagation());
+  }
+
   document.documentElement.appendChild(host);
 
   // Restore the user's preferred width (persisted across pages).
