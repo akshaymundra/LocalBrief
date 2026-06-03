@@ -1,4 +1,4 @@
-# LocalBrief
+# PageLens
 
 Chrome extension that summarizes — and answers questions about — the current page using your choice of model:
 
