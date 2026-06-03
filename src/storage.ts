@@ -10,6 +10,10 @@ export const DEFAULT_MAX_TOKENS = 1024;
 export const TEMPERATURE_RANGE = { min: 0, max: 1 } as const;
 export const MAX_TOKENS_RANGE = { min: 128, max: 4096 } as const;
 
+/** Drawer width is a UI preference shared across all pages. */
+export const DEFAULT_DRAWER_WIDTH = 400;
+export const DRAWER_WIDTH_RANGE = { min: 320, max: 640 } as const;
+
 export const DEFAULT_SYSTEM_PROMPT =
   "You are a concise assistant helping a user understand the web page they are reading. " +
   "When asked to summarize, use short paragraphs and bullet points focused on key facts and takeaways. " +
@@ -30,6 +34,7 @@ interface ExtStorage {
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
+  drawerWidth?: number;
 }
 
 export interface ModelParams {
@@ -122,6 +127,27 @@ export async function setModelParams(params: ModelParams): Promise<void> {
     await chrome.storage.local.remove("maxTokens");
   } else {
     await chrome.storage.local.set({ maxTokens });
+  }
+}
+
+export async function getDrawerWidth(): Promise<number> {
+  const { drawerWidth } = await read();
+  return Math.round(
+    clamp(
+      typeof drawerWidth === "number" ? drawerWidth : DEFAULT_DRAWER_WIDTH,
+      DRAWER_WIDTH_RANGE.min,
+      DRAWER_WIDTH_RANGE.max,
+    ),
+  );
+}
+
+export async function setDrawerWidth(px: number): Promise<void> {
+  const width = Math.round(clamp(px, DRAWER_WIDTH_RANGE.min, DRAWER_WIDTH_RANGE.max));
+  // Store only overrides; defaults stay implicit (same pattern as systemPrompt).
+  if (width === DEFAULT_DRAWER_WIDTH) {
+    await chrome.storage.local.remove("drawerWidth");
+  } else {
+    await chrome.storage.local.set({ drawerWidth: width });
   }
 }
 

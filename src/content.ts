@@ -1,6 +1,8 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { extractPageText } from "./extract";
+import { SETTINGS_CSS, createSettingsPanel } from "./settings-panel";
+import { DRAWER_WIDTH_RANGE, getDrawerWidth, setDrawerWidth } from "./storage";
 import {
   PORT_NAME,
   PROVIDERS,
@@ -18,23 +20,23 @@ marked.setOptions({ gfm: true, breaks: true });
 const HOST_ID = "ollama-summary-host";
 /** Keep page-context message (index 0) + the most recent turns. */
 const MAX_HISTORY = 20;
-/** Chat survives banner close + reloads in this tab; new URL = fresh chat. */
+/** Chat survives drawer close + reloads in this tab; new URL = fresh chat. */
 const STORE_KEY = `pageChat:${location.href}`;
 const KEY_TOOLTIP = "Set API key in extension settings";
+const COPY_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/><path d="M3.5 10.5h-1A1.5 1.5 0 0 1 1 9V2.5A1.5 1.5 0 0 1 2.5 1H9a1.5 1.5 0 0 1 1.5 1.5v1"/></svg>`;
 
-interface BannerRefs {
+interface DrawerRefs {
   host: HTMLElement;
   thread: HTMLElement;
   input: HTMLInputElement;
   sendBtn: HTMLButtonElement;
   copyBtn: HTMLButtonElement;
-  collapseBtn: HTMLButtonElement;
   resetBtn: HTMLButtonElement;
   modelBtn: HTMLButtonElement;
   modelList: HTMLElement;
 }
 
-let refs: BannerRefs | null = null;
+let refs: DrawerRefs | null = null;
 let port: chrome.runtime.Port | null = null;
 let turns: StoredTurn[] = [];
 let selectedProvider: ProviderId = "ollama";
@@ -49,7 +51,7 @@ let renderQueued = false;
 
 chrome.runtime.onMessage.addListener((msg: RuntimeCommand) => {
   if (msg.type === "OPEN_BANNER") {
-    ensureBanner();
+    ensureDrawer();
     refs?.input.focus();
   }
 });
@@ -79,33 +81,71 @@ function clearStoredTurns(): void {
   sessionStorage.removeItem(STORE_KEY);
 }
 
-// ---------------------------------------------------------------- banner UI
+// ---------------------------------------------------------------- drawer UI
 
 const CSS = `
 :host { all: initial; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-.panel {
+.drawer {
   position: fixed;
-  top: 0; left: 50%;
-  transform: translateX(-50%);
-  width: min(760px, calc(100vw - 32px));
+  top: 0; right: 0;
+  height: 100vh;
+  width: min(var(--drawer-width, 400px), calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
   z-index: 2147483647;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.55;
   color: #1f2328;
   background: #ffffff;
+  border-left: 1px solid #d0d7de;
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.18);
+  animation: slideIn 0.25s ease-out;
+  transition: transform 0.25s ease;
+  container-type: inline-size;
+}
+/* Narrow drawer: drop the wordmark, keep the ✦ icon. */
+@container (max-width: 379px) {
+  .title .name { display: none; }
+}
+/* Collapsed: slid fully off-screen. DOM stays mounted so chat, scroll and
+   settings state survive; the peek tab restores it unchanged. */
+.drawer.collapsed { transform: translateX(100%); box-shadow: none; }
+.drawer.resizing { transition: none; }
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.resize-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.resize-handle:hover, .drawer.resizing .resize-handle { background: rgba(130, 80, 223, 0.35); }
+
+.peek {
+  position: fixed;
+  right: 0; top: 50%;
+  transform: translateY(-50%);
+  z-index: 2147483647;
+  display: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  color: #8250df;
+  background: #ffffff;
   border: 1px solid #d0d7de;
-  border-top: none;
-  border-radius: 0 0 12px 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  animation: slideDown 0.25s ease-out;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  padding: 10px 8px;
+  cursor: pointer;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
 }
-@keyframes slideDown {
-  from { transform: translate(-50%, -100%); opacity: 0; }
-  to   { transform: translate(-50%, 0);     opacity: 1; }
-}
+.peek.visible { display: block; }
 
 .header {
   display: flex;
@@ -117,9 +157,9 @@ const CSS = `
   border-radius: 0;
 }
 .title { font-weight: 600; font-size: 13px; flex: 1; display: flex; align-items: center; gap: 6px; }
-.title .spark { color: #8250df; }
+.title .logo { width: 18px; height: 18px; display: block; flex-shrink: 0; }
 
-.dropdown { position: relative; }
+.dropdown { position: relative; min-width: 0; }
 .model-btn {
   font: inherit;
   font-size: 12px;
@@ -133,9 +173,11 @@ const CSS = `
   display: flex;
   align-items: center;
   gap: 5px;
+  max-width: 100%;
 }
 .model-btn:hover { border-color: #8250df; }
-.model-btn .caret { font-size: 9px; color: #59636e; }
+.model-btn .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.model-btn .caret { font-size: 9px; color: #59636e; flex-shrink: 0; }
 
 .dropdown-list {
   display: none;
@@ -207,13 +249,17 @@ const CSS = `
   transition: background 0.15s;
 }
 .icon-btn:hover { background: rgba(0, 0, 0, 0.07); color: #1f2328; }
+.icon-btn.active { background: rgba(130, 80, 223, 0.12); color: #8250df; }
+.icon-btn svg { display: block; }
+.icon-btn { flex-shrink: 0; }
 
-.body { transition: max-height 0.25s ease, opacity 0.2s ease; max-height: 70vh; opacity: 1; overflow: hidden; display: flex; flex-direction: column; }
-.body.collapsed { max-height: 0; opacity: 0; }
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat[hidden] { display: none; }
 
 .thread {
   padding: 12px 16px;
-  max-height: 48vh;
+  flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
@@ -322,7 +368,8 @@ const CSS = `
 .controls button:disabled { opacity: 0.6; cursor: default; }
 
 @media (prefers-color-scheme: dark) {
-  .panel { background: #1c2128; border-color: #363b42; color: #e6edf3; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+  .drawer { background: #1c2128; border-color: #363b42; color: #e6edf3; box-shadow: -8px 0 28px rgba(0,0,0,0.5); }
+  .peek { background: #1c2128; border-color: #363b42; box-shadow: -4px 0 12px rgba(0,0,0,0.5); }
   .header { background: #22272e; border-color: #363b42; }
   .icon-btn, .thinking, .model-btn .caret { color: #9198a1; }
   .icon-btn:hover { background: rgba(255,255,255,0.08); color: #e6edf3; }
@@ -337,9 +384,10 @@ const CSS = `
   .msg.assistant blockquote { border-color: #363b42; color: #9198a1; }
   .error { color: #ff8182; }
 }
+${SETTINGS_CSS}
 `;
 
-function ensureBanner(): BannerRefs {
+function ensureDrawer(): DrawerRefs {
   if (refs && document.getElementById(HOST_ID)) return refs;
 
   const host = document.createElement("div");
@@ -350,32 +398,45 @@ function ensureBanner(): BannerRefs {
   style.textContent = CSS;
   shadow.appendChild(style);
 
-  const panel = document.createElement("div");
-  panel.className = "panel";
-  panel.innerHTML = `
+  const drawer = document.createElement("div");
+  drawer.className = "drawer";
+  drawer.innerHTML = `
     <div class="header">
-      <span class="title"><span class="spark">✦</span> PageLens</span>
+      <span class="title"><img class="logo" src="${chrome.runtime.getURL("icons/icon48.png")}" alt="" /><span class="name">PageLens</span></span>
       <div class="dropdown">
         <button class="model-btn" title="Model"><span class="label"></span><span class="caret">▼</span></button>
         <div class="dropdown-list"></div>
       </div>
       <button class="icon-btn reset" title="Reset chat">↺</button>
-      <button class="icon-btn copy" title="Copy conversation">Copy</button>
-      <button class="icon-btn collapse" title="Collapse">▾</button>
+      <button class="icon-btn copy" title="Copy conversation">${COPY_ICON}</button>
+      <button class="icon-btn settings-toggle" title="Settings">⚙</button>
+      <button class="icon-btn collapse" title="Collapse">»</button>
       <button class="icon-btn close" title="Close (Esc)">✕</button>
     </div>
     <div class="body">
-      <div class="thread"></div>
-      <div class="controls">
-        <input type="text" />
-        <button class="send">Summarize</button>
+      <div class="chat">
+        <div class="thread"></div>
+        <div class="controls">
+          <input type="text" />
+          <button class="send">Summarize</button>
+        </div>
       </div>
     </div>
+    <div class="resize-handle"></div>
   `;
-  shadow.appendChild(panel);
+  shadow.appendChild(drawer);
+
+  // Edge tab shown while the drawer is collapsed — lives outside the drawer
+  // so it stays visible when the drawer slides off-screen.
+  const peek = document.createElement("button");
+  peek.className = "peek";
+  peek.title = "Open PageLens";
+  peek.innerHTML = `<img class="logo" src="${chrome.runtime.getURL("icons/icon48.png")}" alt="" width="18" height="18" style="display:block" />`;
+  shadow.appendChild(peek);
+
   document.documentElement.appendChild(host);
 
-  const $ = <T extends HTMLElement>(sel: string) => panel.querySelector(sel) as T;
+  const $ = <T extends HTMLElement>(sel: string) => drawer.querySelector(sel) as T;
 
   refs = {
     host,
@@ -383,23 +444,46 @@ function ensureBanner(): BannerRefs {
     input: $<HTMLInputElement>("input"),
     sendBtn: $<HTMLButtonElement>(".send"),
     copyBtn: $<HTMLButtonElement>(".copy"),
-    collapseBtn: $<HTMLButtonElement>(".collapse"),
     resetBtn: $<HTMLButtonElement>(".reset"),
     modelBtn: $<HTMLButtonElement>(".model-btn"),
     modelList: $(".dropdown-list"),
   };
 
   initModelDropdown(shadow);
+  initResize(drawer, $(".resize-handle"));
 
-  const body = $(".body");
-  refs.collapseBtn.addEventListener("click", () => {
-    const collapsed = body.classList.toggle("collapsed");
-    refs!.collapseBtn.textContent = collapsed ? "▸" : "▾";
+  // Restore the user's preferred width (persisted across pages).
+  void getDrawerWidth().then((w) => drawer.style.setProperty("--drawer-width", `${w}px`));
+
+  // Settings panel shares the body with the chat; ⚙ swaps between them.
+  const settings = createSettingsPanel();
+  $(".body").appendChild(settings.el);
+  const chat = $(".chat");
+  const settingsBtn = $<HTMLButtonElement>(".settings-toggle");
+  const toggleSettings = (open = !settings.isOpen()): void => {
+    if (open) settings.open();
+    else settings.close();
+    chat.hidden = open;
+    settingsBtn.classList.toggle("active", open);
+  };
+  settingsBtn.addEventListener("click", () => toggleSettings());
+
+  // Collapse slides the drawer off-screen; the peek tab restores it as-is.
+  const setCollapsed = (collapsed: boolean): void => {
+    drawer.classList.toggle("collapsed", collapsed);
+    peek.classList.toggle("visible", collapsed);
+  };
+  $(".collapse").addEventListener("click", () => setCollapsed(true));
+  peek.addEventListener("click", () => {
+    setCollapsed(false);
+    refs?.input.focus();
   });
 
-  $(".close").addEventListener("click", closeBanner);
+  $(".close").addEventListener("click", closeDrawer);
   shadow.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Escape") closeBanner();
+    if ((e as KeyboardEvent).key !== "Escape") return;
+    if (settings.isOpen()) toggleSettings(false);
+    else closeDrawer();
   });
 
   // Follow-state tracking. Direction-based: ANY upward movement disengages
@@ -439,11 +523,11 @@ function ensureBanner(): BannerRefs {
       .map((t) => `## ${t.role === "user" ? "You" : "Assistant"}\n\n${t.display}`)
       .join("\n\n");
     await navigator.clipboard.writeText(md);
-    refs!.copyBtn.textContent = "Copied ✓";
-    setTimeout(() => (refs!.copyBtn.textContent = "Copy"), 1500);
+    refs!.copyBtn.textContent = "✓";
+    setTimeout(() => (refs!.copyBtn.innerHTML = COPY_ICON), 1500);
   });
 
-  // Restore persisted conversation for this page (survives banner close/reload).
+  // Restore persisted conversation for this page (survives drawer close/reload).
   turns = loadTurns();
   for (const turn of turns) {
     if (turn.role === "user") appendUserBubble(turn.display);
@@ -454,7 +538,7 @@ function ensureBanner(): BannerRefs {
   return refs;
 }
 
-function closeBanner(): void {
+function closeDrawer(): void {
   port?.disconnect();
   port = null;
   streaming = false;
@@ -490,6 +574,39 @@ function updateInputMode(): void {
     refs.sendBtn.textContent = "Ask";
     refs.input.placeholder = "Ask a question about this page…";
   }
+}
+
+// ------------------------------------------------------------------ resize
+
+const clampWidth = (px: number): number =>
+  Math.min(DRAWER_WIDTH_RANGE.max, Math.max(DRAWER_WIDTH_RANGE.min, px));
+
+/** Drag the drawer's left edge to resize; the final width persists across pages. */
+function initResize(drawer: HTMLElement, handle: HTMLElement): void {
+  let startX = 0;
+  let startWidth = 0;
+  let width = 0;
+
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    startX = e.clientX;
+    width = startWidth = drawer.getBoundingClientRect().width;
+    drawer.classList.add("resizing"); // kill the transform transition while dragging
+  });
+  handle.addEventListener("pointermove", (e) => {
+    if (!handle.hasPointerCapture(e.pointerId)) return;
+    width = clampWidth(startWidth + (startX - e.clientX));
+    drawer.style.setProperty("--drawer-width", `${width}px`);
+  });
+  const endDrag = (e: PointerEvent): void => {
+    if (!handle.hasPointerCapture(e.pointerId)) return;
+    handle.releasePointerCapture(e.pointerId);
+    drawer.classList.remove("resizing");
+    void setDrawerWidth(width);
+  };
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
 }
 
 // ----------------------------------------------------------- model dropdown
@@ -580,7 +697,7 @@ function initModelDropdown(shadow: ShadowRoot): void {
 // ------------------------------------------------------------------- chat
 
 function submit(): void {
-  const r = ensureBanner();
+  const r = ensureDrawer();
   if (streaming) return;
 
   const inputText = r.input.value.trim();
@@ -617,7 +734,7 @@ function toMessages(allTurns: StoredTurn[]): ChatMessage[] {
   return [messages[0], ...messages.slice(messages.length - (MAX_HISTORY - 1))];
 }
 
-function startStream(r: BannerRefs): void {
+function startStream(r: DrawerRefs): void {
   port?.disconnect();
   port = null;
 
