@@ -41,6 +41,11 @@ let selectedProvider: ProviderId = "ollama";
 let streamingMarkdown = "";
 let streamingEl: HTMLElement | null = null;
 let streaming = false;
+/** Autoscroll follow-state: any upward user gesture disengages; returning to bottom re-engages. */
+let autoFollow = true;
+let programmaticScroll = false;
+let lastScrollTop = 0;
+let renderQueued = false;
 
 chrome.runtime.onMessage.addListener((msg: RuntimeCommand) => {
   if (msg.type === "OPEN_BANNER") {
@@ -397,6 +402,31 @@ function ensureBanner(): BannerRefs {
     if ((e as KeyboardEvent).key === "Escape") closeBanner();
   });
 
+  // Follow-state tracking. Direction-based: ANY upward movement disengages
+  // (even 1px — slow trackpad scrolls must never be fought); re-engage only
+  // when the user lands back at the very bottom.
+  refs.thread.addEventListener(
+    "wheel",
+    (e) => {
+      if (e.deltaY < 0) autoFollow = false;
+    },
+    { passive: true },
+  );
+  refs.thread.addEventListener("scroll", () => {
+    if (!refs) return;
+    const top = refs.thread.scrollTop;
+    if (programmaticScroll) {
+      lastScrollTop = top; // our own scroll — record, don't interpret
+      return;
+    }
+    if (top < lastScrollTop) {
+      autoFollow = false; // user moved up (trackpad, scrollbar, touch)
+    } else if (refs.thread.scrollHeight - top - refs.thread.clientHeight <= 2) {
+      autoFollow = true; // user landed at the bottom — resume following
+    }
+    lastScrollTop = top;
+  });
+
   refs.resetBtn.addEventListener("click", resetChat);
   refs.sendBtn.addEventListener("click", submit);
   refs.input.addEventListener("keydown", (e) => {
@@ -593,6 +623,7 @@ function startStream(r: BannerRefs): void {
 
   streaming = true;
   streamingMarkdown = "";
+  autoFollow = true; // user just sent a message — they want to see the reply
   r.sendBtn.disabled = true;
 
   streamingEl = document.createElement("div");
@@ -620,7 +651,16 @@ function onStreamMessage(msg: StreamMessage): void {
   switch (msg.type) {
     case "CHUNK":
       streamingMarkdown += msg.token;
-      renderStreaming(true);
+      // Throttle to one render per animation frame — tokens can arrive dozens
+      // of times a second and a full markdown re-render per token causes
+      // reflow jank while the user is scrolling.
+      if (!renderQueued) {
+        renderQueued = true;
+        requestAnimationFrame(() => {
+          renderQueued = false;
+          if (streaming) renderStreaming(true);
+        });
+      }
       break;
     case "DONE":
       finishStream();
@@ -655,8 +695,10 @@ function renderStreaming(withCursor: boolean): void {
   if (!streamingEl) return;
   const html = DOMPurify.sanitize(marked.parse(streamingMarkdown) as string);
   streamingEl.innerHTML = withCursor ? html + `<span class="cursor"></span>` : html;
-  scrollThread();
+  // Follow the stream only while engaged — never fight an upward scroll.
+  if (autoFollow) scrollThread();
 }
+
 
 function appendUserBubble(text: string): void {
   if (!refs) return;
@@ -696,5 +738,10 @@ function appendError(message: string, openSettings: boolean): void {
 }
 
 function scrollThread(): void {
-  if (refs) refs.thread.scrollTop = refs.thread.scrollHeight;
+  if (!refs) return;
+  programmaticScroll = true;
+  refs.thread.scrollTop = refs.thread.scrollHeight;
+  requestAnimationFrame(() => {
+    programmaticScroll = false;
+  });
 }
