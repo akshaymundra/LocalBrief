@@ -3,6 +3,13 @@ import type { ProviderId } from "./types";
 /** API keys expire after 7 days; user re-enters them in the options page. */
 export const KEY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Summary-optimized generation defaults. */
+export const DEFAULT_TEMPERATURE = 0.3; // factual, low-drift
+export const DEFAULT_MAX_TOKENS = 1024;
+
+export const TEMPERATURE_RANGE = { min: 0, max: 1 } as const;
+export const MAX_TOKENS_RANGE = { min: 128, max: 4096 } as const;
+
 export const DEFAULT_SYSTEM_PROMPT =
   "You are a concise assistant helping a user understand the web page they are reading. " +
   "When asked to summarize, use short paragraphs and bullet points focused on key facts and takeaways. " +
@@ -21,6 +28,13 @@ interface ExtStorage {
   apiKeys?: Partial<Record<KeyedProvider, StoredApiKey>>;
   defaultModel?: ProviderId;
   systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface ModelParams {
+  temperature: number;
+  maxTokens: number;
 }
 
 async function read(): Promise<ExtStorage> {
@@ -71,6 +85,44 @@ export async function getDefaultModel(): Promise<ProviderId> {
 
 export async function setDefaultModel(provider: ProviderId): Promise<void> {
   await chrome.storage.local.set({ defaultModel: provider });
+}
+
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
+export async function getModelParams(): Promise<ModelParams> {
+  const { temperature, maxTokens } = await read();
+  return {
+    temperature: clamp(
+      typeof temperature === "number" ? temperature : DEFAULT_TEMPERATURE,
+      TEMPERATURE_RANGE.min,
+      TEMPERATURE_RANGE.max,
+    ),
+    maxTokens: Math.round(
+      clamp(
+        typeof maxTokens === "number" ? maxTokens : DEFAULT_MAX_TOKENS,
+        MAX_TOKENS_RANGE.min,
+        MAX_TOKENS_RANGE.max,
+      ),
+    ),
+  };
+}
+
+export async function setModelParams(params: ModelParams): Promise<void> {
+  const temperature = clamp(params.temperature, TEMPERATURE_RANGE.min, TEMPERATURE_RANGE.max);
+  const maxTokens = Math.round(
+    clamp(params.maxTokens, MAX_TOKENS_RANGE.min, MAX_TOKENS_RANGE.max),
+  );
+  // Store only overrides; defaults stay implicit (same pattern as systemPrompt).
+  if (temperature === DEFAULT_TEMPERATURE) {
+    await chrome.storage.local.remove("temperature");
+  } else {
+    await chrome.storage.local.set({ temperature });
+  }
+  if (maxTokens === DEFAULT_MAX_TOKENS) {
+    await chrome.storage.local.remove("maxTokens");
+  } else {
+    await chrome.storage.local.set({ maxTokens });
+  }
 }
 
 export async function getSystemPrompt(): Promise<string> {

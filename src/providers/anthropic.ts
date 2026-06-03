@@ -5,12 +5,11 @@ import { getApiKey } from "../storage";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = PROVIDERS.find((p) => p.id === "anthropic")!.model;
-const MAX_TOKENS = 1024;
 
 export const anthropic: Provider = {
   id: "anthropic",
 
-  async streamChat({ system, messages, signal, onToken }: StreamChatArgs) {
+  async streamChat({ system, messages, temperature, maxTokens, signal, onToken }: StreamChatArgs) {
     const key = await getApiKey("anthropic");
     if (!key) {
       throw new ProviderError(
@@ -32,7 +31,8 @@ export const anthropic: Provider = {
         signal,
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: MAX_TOKENS,
+          max_tokens: maxTokens,
+          temperature,
           stream: true,
           system, // Anthropic: system prompt is top-level, not a message role
           messages,

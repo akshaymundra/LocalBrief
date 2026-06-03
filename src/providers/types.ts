@@ -3,6 +3,8 @@ import type { ChatMessage, ProviderId } from "../types";
 export interface StreamChatArgs {
   system: string;
   messages: ChatMessage[];
+  temperature: number;
+  maxTokens: number;
   signal: AbortSignal;
   onToken: (token: string) => void;
 }

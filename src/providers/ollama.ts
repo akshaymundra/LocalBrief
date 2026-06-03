@@ -8,7 +8,7 @@ const MODEL = PROVIDERS.find((p) => p.id === "ollama")!.model;
 export const ollama: Provider = {
   id: "ollama",
 
-  async streamChat({ system, messages, signal, onToken }: StreamChatArgs) {
+  async streamChat({ system, messages, temperature, maxTokens, signal, onToken }: StreamChatArgs) {
     let response: Response;
     try {
       response = await fetch(OLLAMA_URL, {
@@ -18,6 +18,7 @@ export const ollama: Provider = {
         body: JSON.stringify({
           model: MODEL,
           stream: true,
+          options: { temperature, num_predict: maxTokens },
           messages: [{ role: "system", content: system }, ...messages],
         }),
       });

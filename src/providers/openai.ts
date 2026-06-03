@@ -9,7 +9,7 @@ const MODEL = PROVIDERS.find((p) => p.id === "openai")!.model;
 export const openai: Provider = {
   id: "openai",
 
-  async streamChat({ system, messages, signal, onToken }: StreamChatArgs) {
+  async streamChat({ system, messages, temperature, maxTokens, signal, onToken }: StreamChatArgs) {
     const key = await getApiKey("openai");
     if (!key) {
       throw new ProviderError(
@@ -30,6 +30,8 @@ export const openai: Provider = {
         body: JSON.stringify({
           model: MODEL,
           stream: true,
+          temperature,
+          max_tokens: maxTokens,
           messages: [{ role: "system", content: system }, ...messages],
         }),
       });

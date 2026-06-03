@@ -5,7 +5,7 @@ import {
   type RuntimeCommand,
   type StreamMessage,
 } from "./types";
-import { getApiKey, getSystemPrompt } from "./storage";
+import { getApiKey, getModelParams, getSystemPrompt } from "./storage";
 import { getProvider } from "./providers";
 import { ProviderError } from "./providers/types";
 
@@ -68,10 +68,12 @@ async function handleChat(
   };
 
   try {
-    const system = await getSystemPrompt();
+    const [system, params] = await Promise.all([getSystemPrompt(), getModelParams()]);
     await getProvider(msg.provider).streamChat({
       system,
       messages: msg.messages,
+      temperature: params.temperature,
+      maxTokens: params.maxTokens,
       signal,
       onToken: (token) => send({ type: "CHUNK", token }),
     });
