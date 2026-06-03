@@ -10,8 +10,8 @@ import {
   setDefaultModel,
   setModelParams,
   setSystemPrompt,
-} from "./storage";
-import { PROVIDERS, type ProviderId, type RuntimeCommand } from "./types";
+} from "../storage";
+import { PROVIDERS, type ProviderId, type RuntimeCommand } from "../types";
 
 /**
  * In-drawer settings panel. Edits the same chrome.storage.local values as the
