@@ -349,7 +349,7 @@ function ensureBanner(): BannerRefs {
   panel.className = "panel";
   panel.innerHTML = `
     <div class="header">
-      <span class="title"><span class="spark">✦</span> Page Chat</span>
+      <span class="title"><span class="spark">✦</span> PageLens</span>
       <div class="dropdown">
         <button class="model-btn" title="Model"><span class="label"></span><span class="caret">▼</span></button>
         <div class="dropdown-list"></div>

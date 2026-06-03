@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Page Chat (Ollama · Claude · ChatGPT)",
+  "name": "PageLens",
   "version": "2.0.0",
   "description": "Summarize and chat about any page with a local Ollama model, Claude, or ChatGPT.",
   "icons": {

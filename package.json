@@ -1,5 +1,5 @@
 {
-  "name": "chrome-summary-ext",
+  "name": "pagelens",
   "version": "2.0.0",
   "private": true,
   "description": "Summarize and chat about any web page with local Ollama, Claude, or ChatGPT",
