@@ -1,4 +1,4 @@
-# Page Chat (Ollama · Claude · ChatGPT)
+# LocalBrief
 
 Chrome extension that summarizes — and answers questions about — the current page using your choice of model:
 
