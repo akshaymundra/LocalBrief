@@ -146,15 +146,24 @@ export function createChatController(deps: {
 
     try {
       const provider = dropdown.selected();
-      const context = await pageContext.buildContext(query, provider, await getUseEmbeddings());
+      const pageBlock = await pageContext.buildContext(query, provider, await getUseEmbeddings());
       // Cancelled mid-prepare (drawer closed, or chat reset) — bail before
       // touching a torn-down UI or firing a stale request.
       if (streamingEl !== el) return;
-      // Page context rides on the first user message — keeps providers that
-      // require strict user/assistant alternation (Anthropic) happy.
+      // Page context rides on the first user message (keeps Anthropic's strict
+      // user/assistant alternation). The request leads and the page follows, so
+      // a first-turn instruction is obeyed rather than auto-summarized; the
+      // reminder also curbs link/figure hallucination.
       const messages = store.toMessages();
       if (messages.length) {
-        messages[0] = { ...messages[0], content: `${context}\n\n${messages[0].content}` };
+        messages[0] = {
+          ...messages[0],
+          content:
+            `${messages[0].content}\n\n` +
+            `Use the PAGE CONTENT below to answer the request above. ` +
+            `If something (e.g. a link or figure) is not present in it, say so — do not invent it.\n\n` +
+            pageBlock,
+        };
       }
       stream.start(provider, messages, { onChunk, onDone, onError });
     } catch {
@@ -177,18 +186,17 @@ export function createChatController(deps: {
       return;
     }
 
-    let text: string;
-    if (isFirst) {
-      text = inputText || "Summarize this page.";
-    } else {
-      if (!inputText) return; // Ask mode needs a question
-      text = inputText;
-    }
+    if (!isFirst && !inputText) return; // Ask mode needs a question
+
+    // `request` drives retrieval/framing; null only when the first turn is a
+    // bare "Summarize" (empty box) → whole-page summary.
+    const request = inputText || null;
+    const text = inputText || "Summarize this page.";
 
     store.push({ role: "user", content: text, display: text });
     appendUserBubble(text);
     refs.input.value = "";
-    void startStream(isFirst ? null : text);
+    void startStream(request);
   }
 
   function teardown(): void {

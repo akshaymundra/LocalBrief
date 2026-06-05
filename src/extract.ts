@@ -27,12 +27,36 @@ export function extractPageText(): string {
   for (const el of root.querySelectorAll(NOISE_SELECTOR)) {
     el.remove();
   }
+  inlineLinks(root);
 
   return (root.innerText ?? "")
     .replace(/[ \t]+\n/g, "\n") // trailing spaces on a line
     .replace(/\n{3,}/g, "\n\n") // collapse blank-line runs
     .replace(/[ \t]{2,}/g, " ") // collapse inline whitespace runs
     .trim();
+}
+
+/**
+ * Rewrite content anchors as inline markdown `[text](url)` so real URLs reach
+ * the model (innerText alone drops hrefs → link questions get hallucinated).
+ * Keeps http/https/mailto; skips fragments, javascript:, and self-links.
+ */
+function inlineLinks(root: HTMLElement): void {
+  for (const a of root.querySelectorAll("a[href]")) {
+    const raw = a.getAttribute("href");
+    if (!raw) continue;
+
+    let url: string;
+    try {
+      url = new URL(raw, location.href).href;
+    } catch {
+      continue;
+    }
+    if (!/^(https?:|mailto:)/.test(url) || url === location.href) continue;
+
+    const text = (a.textContent ?? "").replace(/\s+/g, " ").trim();
+    a.replaceWith(`[${text || url}](${url})`);
+  }
 }
 
 /** Cap text to `maxChars`, appending a truncation marker when cut. */

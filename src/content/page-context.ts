@@ -85,9 +85,14 @@ export function createPageContext(url: string): PageContext {
     async buildContext(query, provider, useEmbeddings) {
       const all = load();
       const budget = PROVIDER_CHAR_BUDGET[provider];
+      const fullText = all.map((c) => c.text).join("\n\n");
 
-      // Initial summary: no query to rank against → send the whole page.
-      if (!query) return frame(capToBudget(all.map((c) => c.text).join("\n\n"), budget));
+      // Retrieve only when there's a request AND the page exceeds budget.
+      // Otherwise send the whole page (capped): covers the initial summary
+      // (no query) and any request on a page that already fits — keeps breadth.
+      if (!query || fullText.length <= budget) {
+        return frame(capToBudget(fullText, budget));
+      }
 
       const lexicalScores = lexicalScore(query, all);
 
