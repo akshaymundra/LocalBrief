@@ -2,6 +2,11 @@
 
 export const COPY_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/><path d="M3.5 10.5h-1A1.5 1.5 0 0 1 1 9V2.5A1.5 1.5 0 0 1 2.5 1H9a1.5 1.5 0 0 1 1.5 1.5v1"/></svg>`;
 
+/** Speaker glyph for the per-message "read aloud" button. */
+export const SPEAK_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 2.5 4.5 5.5H2v5h2.5l4 3z"/><path class="wave" d="M11 5.5a3.5 3.5 0 0 1 0 5"/><path class="wave" d="M12.8 3.5a6 6 0 0 1 0 9"/></svg>`;
+/** Stop (square) glyph shown while a message is playing. */
+export const STOP_ICON = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg>`;
+
 export const DRAWER_CSS = `
 :host { all: initial; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -218,6 +223,26 @@ export const DRAWER_CSS = `
 .msg.assistant a { color: #8250df; }
 .msg.assistant blockquote { border-left: 3px solid #d0d7de; padding-left: 12px; color: #59636e; margin: 8px 0; }
 
+.speak {
+  margin-top: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #59636e;
+  padding: 3px 7px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11.5px;
+}
+.speak:hover { background: rgba(0, 0, 0, 0.07); color: #1f2328; }
+.speak.playing { color: #8250df; }
+.speak svg { display: block; }
+.speak.playing .wave { animation: speakPulse 1.1s ease-in-out infinite; }
+@keyframes speakPulse { 50% { opacity: 0.25; } }
+
 .cursor {
   display: inline-block;
   width: 3px; height: 1em;
@@ -302,5 +327,8 @@ export const DRAWER_CSS = `
   .controls input { background: #161b22; border-color: #363b42; }
   .msg.assistant blockquote { border-color: #363b42; color: #9198a1; }
   .error { color: #ff8182; }
+  .speak { color: #9198a1; }
+  .speak:hover { background: rgba(255, 255, 255, 0.08); color: #e6edf3; }
+  .speak.playing { color: #a371f7; }
 }
 `;

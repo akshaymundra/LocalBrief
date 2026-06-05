@@ -28,6 +28,10 @@ export const PROVIDER_CHAR_BUDGET: Record<ProviderId, number> = {
 /** Local embedding model used for opt-in hybrid retrieval (requires `ollama pull`). */
 export const EMBED_MODEL = "nomic-embed-text";
 
+/** Text-to-speech playback speed. */
+export const DEFAULT_TTS_RATE = 1;
+export const TTS_RATE_RANGE = { min: 0.5, max: 2 } as const;
+
 export const DEFAULT_SYSTEM_PROMPT =
   "You are a concise assistant helping a user understand the web page they are reading. " +
   "When asked to summarize, use short paragraphs and bullet points focused on key facts and takeaways. " +
@@ -50,6 +54,13 @@ interface ExtStorage {
   maxTokens?: number;
   drawerWidth?: number;
   useEmbeddings?: boolean;
+  ttsVoiceURI?: string;
+  ttsRate?: number;
+}
+
+export interface TtsPrefs {
+  voiceURI?: string;
+  rate: number;
 }
 
 export interface ModelParams {
@@ -177,6 +188,36 @@ export async function setUseEmbeddings(enabled: boolean): Promise<void> {
     await chrome.storage.local.set({ useEmbeddings: true });
   } else {
     await chrome.storage.local.remove("useEmbeddings");
+  }
+}
+
+export async function getTtsPrefs(): Promise<TtsPrefs> {
+  const { ttsVoiceURI, ttsRate } = await read();
+  return {
+    voiceURI: ttsVoiceURI,
+    rate: clamp(
+      typeof ttsRate === "number" ? ttsRate : DEFAULT_TTS_RATE,
+      TTS_RATE_RANGE.min,
+      TTS_RATE_RANGE.max,
+    ),
+  };
+}
+
+export async function setTtsVoice(voiceURI: string): Promise<void> {
+  if (voiceURI) {
+    await chrome.storage.local.set({ ttsVoiceURI: voiceURI });
+  } else {
+    await chrome.storage.local.remove("ttsVoiceURI");
+  }
+}
+
+export async function setTtsRate(rate: number): Promise<void> {
+  const clamped = clamp(rate, TTS_RATE_RANGE.min, TTS_RATE_RANGE.max);
+  // Store only the override; default stays implicit.
+  if (clamped === DEFAULT_TTS_RATE) {
+    await chrome.storage.local.remove("ttsRate");
+  } else {
+    await chrome.storage.local.set({ ttsRate: clamped });
   }
 }
 

@@ -5,16 +5,21 @@ import {
   MAX_TOKENS_RANGE,
   TEMPERATURE_RANGE,
   EMBED_MODEL,
+  TTS_RATE_RANGE,
   getDefaultModel,
   getModelParams,
   getSystemPrompt,
+  getTtsPrefs,
   getUseEmbeddings,
   setDefaultModel,
   setModelParams,
   setSystemPrompt,
+  setTtsRate,
+  setTtsVoice,
   setUseEmbeddings,
 } from "../storage";
 import { PROVIDERS, type ProviderId, type RuntimeCommand } from "../types";
+import { isTtsSupported, listEnglishVoices } from "./tts";
 
 /**
  * In-drawer settings panel. Edits the same chrome.storage.local values as the
@@ -32,6 +37,7 @@ export const SETTINGS_CSS = `
 .settings .flash { font-size: 12px; font-weight: 400; color: #1a7f37; opacity: 0; transition: opacity 0.2s; }
 .settings .flash.show { opacity: 1; }
 .settings .field { display: flex; flex-direction: column; gap: 5px; }
+.settings .field[hidden] { display: none; }
 .settings label { font-size: 12.5px; font-weight: 600; }
 .settings .hint { font-size: 11.5px; color: #59636e; }
 .settings select, .settings input[type="number"], .settings textarea {
@@ -59,7 +65,7 @@ export const SETTINGS_CSS = `
 .settings textarea { resize: vertical; min-height: 90px; }
 .settings input[type="range"] { accent-color: #8250df; }
 .settings input[type="checkbox"] { accent-color: #8250df; width: 15px; height: 15px; }
-.settings .temp-value { font-weight: 400; color: #59636e; }
+.settings .temp-value, .settings .rate-value { font-weight: 400; color: #59636e; }
 .settings .toggle-row { display: flex; align-items: center; gap: 8px; }
 .settings .toggle-row label { font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .settings code {
@@ -96,7 +102,7 @@ export const SETTINGS_CSS = `
 .settings .keys-btn:hover { background: rgba(130, 80, 223, 0.1); }
 
 @media (prefers-color-scheme: dark) {
-  .settings .hint, .settings .temp-value { color: #9198a1; }
+  .settings .hint, .settings .temp-value, .settings .rate-value { color: #9198a1; }
   .settings .flash { color: #3fb950; }
   .settings select, .settings input[type="number"], .settings textarea { background: #161b22; border-color: #363b42; }
 }
@@ -144,6 +150,14 @@ export function createSettingsPanel(): SettingsPanel {
       <span class="hint">Better answers on long pages for synonym / relational questions. Off uses fast keyword (lexical) retrieval — no setup.</span>
       <span class="hint setup-hint">Requires a local embedding model: <code>ollama pull ${EMBED_MODEL}</code></span>
     </div>
+    <div class="field tts-field" hidden>
+      <label>Read aloud — voice</label>
+      <select class="tts-voice"></select>
+      <label>Speed <span class="rate-value"></span></label>
+      <input class="tts-rate" type="range"
+        min="${TTS_RATE_RANGE.min}" max="${TTS_RATE_RANGE.max}" step="0.1" />
+      <span class="hint">Used by the 🔊 button on each response.</span>
+    </div>
     <div class="field">
       <label>API keys</label>
       <button class="keys-btn">Manage API keys…</button>
@@ -159,6 +173,10 @@ export function createSettingsPanel(): SettingsPanel {
   const promptArea = $<HTMLTextAreaElement>(".prompt");
   const embeddingsToggle = $<HTMLInputElement>(".use-embeddings");
   const setupHint = $<HTMLElement>(".setup-hint");
+  const ttsField = $<HTMLElement>(".tts-field");
+  const voiceSelect = $<HTMLSelectElement>(".tts-voice");
+  const rateInput = $<HTMLInputElement>(".tts-rate");
+  const rateValue = $(".rate-value");
   const flash = $(".flash");
 
   modelSelect.innerHTML = PROVIDERS.map(
@@ -176,6 +194,19 @@ export function createSettingsPanel(): SettingsPanel {
     tempValue.textContent = Number(temperatureInput.value).toFixed(1);
   };
 
+  const syncRateLabel = (): void => {
+    rateValue.textContent = `${Number(rateInput.value).toFixed(1)}×`;
+  };
+
+  /** (Re)populate the voice picker; voices load asynchronously in the browser. */
+  function loadVoices(selected?: string): void {
+    const voices = listEnglishVoices();
+    voiceSelect.innerHTML = voices
+      .map((v) => `<option value="${v.voiceURI}">${v.name} (${v.lang})</option>`)
+      .join("");
+    if (selected) voiceSelect.value = selected;
+  }
+
   async function loadValues(): Promise<void> {
     modelSelect.value = await getDefaultModel();
     promptArea.value = await getSystemPrompt();
@@ -185,6 +216,20 @@ export function createSettingsPanel(): SettingsPanel {
     syncTempLabel();
     embeddingsToggle.checked = await getUseEmbeddings();
     setupHint.hidden = !embeddingsToggle.checked;
+
+    if (isTtsSupported()) {
+      ttsField.hidden = false;
+      const prefs = await getTtsPrefs();
+      loadVoices(prefs.voiceURI);
+      rateInput.value = String(prefs.rate);
+      syncRateLabel();
+      // Voices can load late; refresh once if the list was empty (auto-removes).
+      if (!voiceSelect.options.length) {
+        speechSynthesis.addEventListener("voiceschanged", () => loadVoices(prefs.voiceURI), {
+          once: true,
+        });
+      }
+    }
   }
 
   /** Persist params from current field values, then re-sync post-clamp. */
@@ -220,6 +265,15 @@ export function createSettingsPanel(): SettingsPanel {
   embeddingsToggle.addEventListener("change", async () => {
     await setUseEmbeddings(embeddingsToggle.checked);
     setupHint.hidden = !embeddingsToggle.checked;
+    showSaved();
+  });
+  voiceSelect.addEventListener("change", async () => {
+    await setTtsVoice(voiceSelect.value);
+    showSaved();
+  });
+  rateInput.addEventListener("input", syncRateLabel);
+  rateInput.addEventListener("change", async () => {
+    await setTtsRate(Number(rateInput.value));
     showSaved();
   });
   $(".keys-btn").addEventListener("click", () => {

@@ -1,4 +1,4 @@
-import { getUseEmbeddings } from "../storage";
+import { getTtsPrefs, getUseEmbeddings } from "../storage";
 import type { RuntimeCommand } from "../types";
 import type { AutoScroller } from "./autoscroll";
 import type { ChatStore } from "./chat-store";
@@ -6,7 +6,9 @@ import type { DrawerRefs } from "./drawer";
 import type { ModelDropdown } from "./dropdown";
 import { renderMarkdown } from "./markdown";
 import { createPageContext } from "./page-context";
+import { SPEAK_ICON, STOP_ICON } from "./styles";
 import type { StreamClient } from "./stream";
+import { createTts } from "./tts";
 
 /**
  * Chat controller: submit flow, streaming view state, and thread rendering.
@@ -30,11 +32,14 @@ export function createChatController(deps: {
 }): ChatController {
   const { refs, store, scroller, stream, dropdown } = deps;
   const pageContext = createPageContext(location.href);
+  const tts = createTts();
 
   let streamingMarkdown = "";
-  let streamingEl: HTMLElement | null = null;
+  let streamingEl: HTMLElement | null = null; // outer .msg.assistant
+  let streamingMd: HTMLElement | null = null; // inner .md (render target)
   let renderQueued = false;
   let preparing = false; // building context (may await embeddings) before stream starts
+  let currentBtn: HTMLButtonElement | null = null; // speaker button currently playing
 
   /** Empty thread → Summarize mode; afterwards → Ask mode. */
   function updateInputMode(): void {
@@ -60,8 +65,41 @@ export function createChatController(deps: {
   function appendAssistantMarkdown(markdown: string): void {
     const div = document.createElement("div");
     div.className = "msg assistant";
-    div.innerHTML = renderMarkdown(markdown);
+    const md = document.createElement("div");
+    md.className = "md";
+    md.innerHTML = renderMarkdown(markdown);
+    div.appendChild(md);
+    attachSpeaker(div, md);
     refs.thread.appendChild(div);
+  }
+
+  /** Per-message "read aloud" control. Speaks the rendered text, not markdown. */
+  function setPlaying(btn: HTMLButtonElement, on: boolean): void {
+    btn.classList.toggle("playing", on);
+    btn.innerHTML = on ? STOP_ICON : SPEAK_ICON;
+    btn.title = on ? "Stop" : "Read aloud";
+    if (on) currentBtn = btn;
+    else if (currentBtn === btn) currentBtn = null;
+  }
+
+  function attachSpeaker(outer: HTMLElement, md: HTMLElement): void {
+    if (!tts.isSupported) return;
+    const btn = document.createElement("button");
+    btn.className = "speak";
+    btn.title = "Read aloud";
+    btn.innerHTML = SPEAK_ICON;
+    btn.addEventListener("click", async () => {
+      if (btn === currentBtn) {
+        tts.stop();
+        return;
+      }
+      const prefs = await getTtsPrefs();
+      tts.speak(md.textContent ?? "", prefs, {
+        onStart: () => setPlaying(btn, true),
+        onEnd: () => setPlaying(btn, false),
+      });
+    });
+    outer.appendChild(btn);
   }
 
   function appendError(message: string, openSettings: boolean): void {
@@ -84,9 +122,9 @@ export function createChatController(deps: {
   }
 
   function renderStreaming(withCursor: boolean): void {
-    if (!streamingEl) return;
+    if (!streamingMd) return;
     const html = renderMarkdown(streamingMarkdown);
-    streamingEl.innerHTML = withCursor ? html + `<span class="cursor"></span>` : html;
+    streamingMd.innerHTML = withCursor ? html + `<span class="cursor"></span>` : html;
     scroller.follow();
   }
 
@@ -111,10 +149,12 @@ export function createChatController(deps: {
     if (streamingMarkdown) {
       store.push({ role: "assistant", content: streamingMarkdown, display: streamingMarkdown });
       renderStreaming(false);
+      if (streamingEl && streamingMd) attachSpeaker(streamingEl, streamingMd);
     } else {
       streamingEl?.remove();
     }
     streamingEl = null;
+    streamingMd = null;
     updateInputMode();
     refs.input.focus();
   }
@@ -123,6 +163,7 @@ export function createChatController(deps: {
     refs.sendBtn.disabled = false;
     streamingEl?.remove();
     streamingEl = null;
+    streamingMd = null;
     appendError(message, openSettings);
   }
 
@@ -134,13 +175,18 @@ export function createChatController(deps: {
   async function startStream(query: string | null): Promise<void> {
     preparing = true;
     streamingMarkdown = "";
+    tts.stop(); // silence any playback from a previous answer
     scroller.engage(); // user just sent a message — they want to see the reply
     refs.sendBtn.disabled = true;
 
     const el = document.createElement("div");
     el.className = "msg assistant";
-    el.innerHTML = `<div class="thinking">Thinking<span class="dots"></span></div>`;
+    const md = document.createElement("div");
+    md.className = "md";
+    md.innerHTML = `<div class="thinking">Thinking<span class="dots"></span></div>`;
+    el.appendChild(md);
     streamingEl = el;
+    streamingMd = md;
     refs.thread.appendChild(el);
     scroller.scrollToBottom();
 
@@ -201,7 +247,9 @@ export function createChatController(deps: {
 
   function teardown(): void {
     stream.abort();
+    tts.stop();
     streamingEl = null;
+    streamingMd = null;
     streamingMarkdown = "";
     pageContext.dispose(); // free cached page text + in-memory embeddings
   }
