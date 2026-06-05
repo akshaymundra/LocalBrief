@@ -4,12 +4,15 @@ import {
   DEFAULT_TEMPERATURE,
   MAX_TOKENS_RANGE,
   TEMPERATURE_RANGE,
+  EMBED_MODEL,
   getDefaultModel,
   getModelParams,
   getSystemPrompt,
+  getUseEmbeddings,
   setDefaultModel,
   setModelParams,
   setSystemPrompt,
+  setUseEmbeddings,
 } from "../storage";
 import { PROVIDERS, type ProviderId, type RuntimeCommand } from "../types";
 
@@ -55,7 +58,18 @@ export const SETTINGS_CSS = `
 }
 .settings textarea { resize: vertical; min-height: 90px; }
 .settings input[type="range"] { accent-color: #8250df; }
+.settings input[type="checkbox"] { accent-color: #8250df; width: 15px; height: 15px; }
 .settings .temp-value { font-weight: 400; color: #59636e; }
+.settings .toggle-row { display: flex; align-items: center; gap: 8px; }
+.settings .toggle-row label { font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.settings code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: rgba(129, 139, 152, 0.18);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.settings .setup-hint[hidden] { display: none; }
 .settings .link-btn {
   align-self: flex-start;
   font: inherit;
@@ -123,6 +137,14 @@ export function createSettingsPanel(): SettingsPanel {
       <button class="link-btn reset-prompt">Reset to default</button>
     </div>
     <div class="field">
+      <div class="toggle-row">
+        <input type="checkbox" id="use-embeddings" class="use-embeddings" />
+        <label for="use-embeddings">Higher-accuracy retrieval</label>
+      </div>
+      <span class="hint">Better answers on long pages for synonym / relational questions. Off uses fast keyword (lexical) retrieval — no setup.</span>
+      <span class="hint setup-hint">Requires a local embedding model: <code>ollama pull ${EMBED_MODEL}</code></span>
+    </div>
+    <div class="field">
       <label>API keys</label>
       <button class="keys-btn">Manage API keys…</button>
       <span class="hint">Keys are entered on the extension options page only.</span>
@@ -135,6 +157,8 @@ export function createSettingsPanel(): SettingsPanel {
   const tempValue = $(".temp-value");
   const maxTokensInput = $<HTMLInputElement>(".max-tokens");
   const promptArea = $<HTMLTextAreaElement>(".prompt");
+  const embeddingsToggle = $<HTMLInputElement>(".use-embeddings");
+  const setupHint = $<HTMLElement>(".setup-hint");
   const flash = $(".flash");
 
   modelSelect.innerHTML = PROVIDERS.map(
@@ -159,6 +183,8 @@ export function createSettingsPanel(): SettingsPanel {
     temperatureInput.value = String(params.temperature);
     maxTokensInput.value = String(params.maxTokens);
     syncTempLabel();
+    embeddingsToggle.checked = await getUseEmbeddings();
+    setupHint.hidden = !embeddingsToggle.checked;
   }
 
   /** Persist params from current field values, then re-sync post-clamp. */
@@ -189,6 +215,11 @@ export function createSettingsPanel(): SettingsPanel {
   $(".reset-prompt").addEventListener("click", async () => {
     promptArea.value = DEFAULT_SYSTEM_PROMPT;
     await setSystemPrompt(promptArea.value);
+    showSaved();
+  });
+  embeddingsToggle.addEventListener("change", async () => {
+    await setUseEmbeddings(embeddingsToggle.checked);
+    setupHint.hidden = !embeddingsToggle.checked;
     showSaved();
   });
   $(".keys-btn").addEventListener("click", () => {

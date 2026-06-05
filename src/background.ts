@@ -1,12 +1,14 @@
 import {
   PORT_NAME,
   type ChatRequest,
+  type EmbedResponse,
   type ProviderStatus,
   type RuntimeCommand,
   type StreamMessage,
 } from "./types";
 import { getApiKey, getModelParams, getSystemPrompt } from "./storage";
 import { getProvider } from "./providers";
+import { getEmbedder } from "./providers/embedders";
 import { ProviderError } from "./providers/types";
 
 // Toolbar icon click → tell the tab's content script to open the banner.
@@ -35,6 +37,18 @@ chrome.runtime.onMessage.addListener((msg: RuntimeCommand, _sender, sendResponse
         openai: !!(await getApiKey("openai")),
       };
       sendResponse(status);
+    })();
+    return true; // async response
+  }
+  if (msg.type === "EMBED") {
+    void (async () => {
+      try {
+        const vectors = await getEmbedder(msg.embedder).embed(msg.texts);
+        sendResponse({ vectors } satisfies EmbedResponse);
+      } catch (err) {
+        const message = err instanceof ProviderError ? err.message : "Embedding failed.";
+        sendResponse({ error: message } satisfies EmbedResponse);
+      }
     })();
     return true; // async response
   }

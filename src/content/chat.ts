@@ -1,10 +1,11 @@
-import { extractPageText } from "../extract";
+import { getUseEmbeddings } from "../storage";
 import type { RuntimeCommand } from "../types";
 import type { AutoScroller } from "./autoscroll";
 import type { ChatStore } from "./chat-store";
 import type { DrawerRefs } from "./drawer";
 import type { ModelDropdown } from "./dropdown";
 import { renderMarkdown } from "./markdown";
+import { createPageContext } from "./page-context";
 import type { StreamClient } from "./stream";
 
 /**
@@ -28,10 +29,12 @@ export function createChatController(deps: {
   dropdown: ModelDropdown;
 }): ChatController {
   const { refs, store, scroller, stream, dropdown } = deps;
+  const pageContext = createPageContext(location.href);
 
   let streamingMarkdown = "";
   let streamingEl: HTMLElement | null = null;
   let renderQueued = false;
+  let preparing = false; // building context (may await embeddings) before stream starts
 
   /** Empty thread → Summarize mode; afterwards → Ask mode. */
   function updateInputMode(): void {
@@ -123,55 +126,76 @@ export function createChatController(deps: {
     appendError(message, openSettings);
   }
 
-  function startStream(): void {
+  /**
+   * Build the page-context for `query` (null = initial summary), merge it into
+   * the first user message, and start streaming. Async because hybrid
+   * retrieval may await embeddings.
+   */
+  async function startStream(query: string | null): Promise<void> {
+    preparing = true;
     streamingMarkdown = "";
     scroller.engage(); // user just sent a message — they want to see the reply
     refs.sendBtn.disabled = true;
 
-    streamingEl = document.createElement("div");
-    streamingEl.className = "msg assistant";
-    streamingEl.innerHTML = `<div class="thinking">Thinking<span class="dots"></span></div>`;
-    refs.thread.appendChild(streamingEl);
+    const el = document.createElement("div");
+    el.className = "msg assistant";
+    el.innerHTML = `<div class="thinking">Thinking<span class="dots"></span></div>`;
+    streamingEl = el;
+    refs.thread.appendChild(el);
     scroller.scrollToBottom();
 
-    stream.start(dropdown.selected(), store.toMessages(), { onChunk, onDone, onError });
+    try {
+      const provider = dropdown.selected();
+      const context = await pageContext.buildContext(query, provider, await getUseEmbeddings());
+      // Cancelled mid-prepare (drawer closed, or chat reset) — bail before
+      // touching a torn-down UI or firing a stale request.
+      if (streamingEl !== el) return;
+      // Page context rides on the first user message — keeps providers that
+      // require strict user/assistant alternation (Anthropic) happy.
+      const messages = store.toMessages();
+      if (messages.length) {
+        messages[0] = { ...messages[0], content: `${context}\n\n${messages[0].content}` };
+      }
+      stream.start(provider, messages, { onChunk, onDone, onError });
+    } catch {
+      if (streamingEl === el) onError("Couldn't prepare the page content — try again.", false);
+    } finally {
+      preparing = false;
+    }
   }
 
   // ----------------------------------------------------------------- public
 
   function submit(): void {
-    if (stream.isStreaming()) return;
+    if (stream.isStreaming() || preparing) return;
 
     const inputText = refs.input.value.trim();
+    const isFirst = store.isEmpty();
 
-    let content: string;
-    let display: string;
-    if (store.isEmpty()) {
-      // First turn: embed page context once.
-      const pageText = extractPageText();
-      if (!pageText) {
-        appendError("No readable text found on this page.", false);
-        return;
-      }
-      const ask = inputText || "Summarize this page.";
-      content = `Title: ${document.title}\nURL: ${location.href}\n\nContent:\n${pageText}\n\n${ask}`;
-      display = ask;
-    } else {
-      if (!inputText) return; // Ask mode needs a question
-      content = inputText;
-      display = inputText;
+    if (isFirst && !pageContext.hasContent()) {
+      appendError("No readable text found on this page.", false);
+      return;
     }
 
-    store.push({ role: "user", content, display });
-    appendUserBubble(display);
+    let text: string;
+    if (isFirst) {
+      text = inputText || "Summarize this page.";
+    } else {
+      if (!inputText) return; // Ask mode needs a question
+      text = inputText;
+    }
+
+    store.push({ role: "user", content: text, display: text });
+    appendUserBubble(text);
     refs.input.value = "";
-    startStream();
+    void startStream(isFirst ? null : text);
   }
 
   function teardown(): void {
     stream.abort();
     streamingEl = null;
     streamingMarkdown = "";
+    pageContext.dispose(); // free cached page text + in-memory embeddings
   }
 
   function reset(): void {

@@ -14,6 +14,20 @@ export const MAX_TOKENS_RANGE = { min: 128, max: 4096 } as const;
 export const DEFAULT_DRAWER_WIDTH = 400;
 export const DRAWER_WIDTH_RANGE = { min: 320, max: 640 } as const;
 
+/**
+ * Max characters of page text sent to each provider, per request. Ollama is
+ * kept small to stay fast on a local model; cloud models have large context
+ * windows. (~4 chars ≈ 1 token; conservative vs each model's window.)
+ */
+export const PROVIDER_CHAR_BUDGET: Record<ProviderId, number> = {
+  ollama: 12_000,
+  anthropic: 100_000,
+  openai: 100_000,
+};
+
+/** Local embedding model used for opt-in hybrid retrieval (requires `ollama pull`). */
+export const EMBED_MODEL = "nomic-embed-text";
+
 export const DEFAULT_SYSTEM_PROMPT =
   "You are a concise assistant helping a user understand the web page they are reading. " +
   "When asked to summarize, use short paragraphs and bullet points focused on key facts and takeaways. " +
@@ -35,6 +49,7 @@ interface ExtStorage {
   temperature?: number;
   maxTokens?: number;
   drawerWidth?: number;
+  useEmbeddings?: boolean;
 }
 
 export interface ModelParams {
@@ -148,6 +163,20 @@ export async function setDrawerWidth(px: number): Promise<void> {
     await chrome.storage.local.remove("drawerWidth");
   } else {
     await chrome.storage.local.set({ drawerWidth: width });
+  }
+}
+
+/** Opt-in higher-accuracy (hybrid) retrieval. Off by default — no setup required. */
+export async function getUseEmbeddings(): Promise<boolean> {
+  return (await read()).useEmbeddings === true;
+}
+
+export async function setUseEmbeddings(enabled: boolean): Promise<void> {
+  // Store only the override; default (false) stays implicit.
+  if (enabled) {
+    await chrome.storage.local.set({ useEmbeddings: true });
+  } else {
+    await chrome.storage.local.remove("useEmbeddings");
   }
 }
 

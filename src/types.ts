@@ -33,14 +33,24 @@ export type StreamMessage =
   | { type: "DONE" }
   | { type: "ERROR"; message: string; openSettings?: boolean };
 
+/**
+ * Embedding providers (for retrieval). Separate from chat ProviderId so cloud
+ * embedders (OpenAI, Voyage, …) can be added without touching chat providers.
+ */
+export type EmbedderId = "ollama";
+
 /** One-shot runtime messages (chrome.runtime.sendMessage / tabs.sendMessage). */
 export type RuntimeCommand =
   | { type: "OPEN_BANNER" } // background → content: open banner, do NOT auto-summarize
   | { type: "OPEN_OPTIONS" } // content → background: open the options page
-  | { type: "GET_PROVIDER_STATUS" }; // content → background: which providers are usable
+  | { type: "GET_PROVIDER_STATUS" } // content → background: which providers are usable
+  | { type: "EMBED"; embedder: EmbedderId; texts: string[] }; // content → background: embed texts
 
 /** GET_PROVIDER_STATUS response: true = selectable (key present or not needed). */
 export type ProviderStatus = Record<ProviderId, boolean>;
+
+/** EMBED response: vectors aligned with the request's `texts`, or an error. */
+export type EmbedResponse = { vectors: number[][] } | { error: string };
 
 /** A persisted conversation turn. `content` goes to the model; `display` is rendered. */
 export interface StoredTurn {
