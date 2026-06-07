@@ -223,8 +223,8 @@ export const DRAWER_CSS = `
 .msg.assistant a { color: #8250df; }
 .msg.assistant blockquote { border-left: 3px solid #d0d7de; padding-left: 12px; color: #59636e; margin: 8px 0; }
 
-.speak {
-  margin-top: 4px;
+.msg-actions { display: flex; gap: 2px; margin-top: 4px; }
+.msg-action {
   border: none;
   background: transparent;
   cursor: pointer;
@@ -237,9 +237,9 @@ export const DRAWER_CSS = `
   font: inherit;
   font-size: 11.5px;
 }
-.speak:hover { background: rgba(0, 0, 0, 0.07); color: #1f2328; }
+.msg-action:hover { background: rgba(0, 0, 0, 0.07); color: #1f2328; }
+.msg-action svg { display: block; }
 .speak.playing { color: #8250df; }
-.speak svg { display: block; }
 .speak.playing .wave { animation: speakPulse 1.1s ease-in-out infinite; }
 @keyframes speakPulse { 50% { opacity: 0.25; } }
 
@@ -327,8 +327,8 @@ export const DRAWER_CSS = `
   .controls input { background: #161b22; border-color: #363b42; }
   .msg.assistant blockquote { border-color: #363b42; color: #9198a1; }
   .error { color: #ff8182; }
-  .speak { color: #9198a1; }
-  .speak:hover { background: rgba(255, 255, 255, 0.08); color: #e6edf3; }
+  .msg-action { color: #9198a1; }
+  .msg-action:hover { background: rgba(255, 255, 255, 0.08); color: #e6edf3; }
   .speak.playing { color: #a371f7; }
 }
 `;

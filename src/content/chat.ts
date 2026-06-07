@@ -6,7 +6,7 @@ import type { DrawerRefs } from "./drawer";
 import type { ModelDropdown } from "./dropdown";
 import { renderMarkdown } from "./markdown";
 import { createPageContext } from "./page-context";
-import { SPEAK_ICON, STOP_ICON } from "./styles";
+import { COPY_ICON, SPEAK_ICON, STOP_ICON } from "./styles";
 import type { StreamClient } from "./stream";
 import { createTts } from "./tts";
 
@@ -69,11 +69,11 @@ export function createChatController(deps: {
     md.className = "md";
     md.innerHTML = renderMarkdown(markdown);
     div.appendChild(md);
-    attachSpeaker(div, md);
+    attachActions(div, md, markdown);
     refs.thread.appendChild(div);
   }
 
-  /** Per-message "read aloud" control. Speaks the rendered text, not markdown. */
+  /** Per-message controls row: copy (markdown) + read aloud (rendered text). */
   function setPlaying(btn: HTMLButtonElement, on: boolean): void {
     btn.classList.toggle("playing", on);
     btn.innerHTML = on ? STOP_ICON : SPEAK_ICON;
@@ -82,24 +82,41 @@ export function createChatController(deps: {
     else if (currentBtn === btn) currentBtn = null;
   }
 
-  function attachSpeaker(outer: HTMLElement, md: HTMLElement): void {
-    if (!tts.isSupported) return;
-    const btn = document.createElement("button");
-    btn.className = "speak";
-    btn.title = "Read aloud";
-    btn.innerHTML = SPEAK_ICON;
-    btn.addEventListener("click", async () => {
-      if (btn === currentBtn) {
-        tts.stop();
-        return;
-      }
-      const prefs = await getTtsPrefs();
-      tts.speak(md.textContent ?? "", prefs, {
-        onStart: () => setPlaying(btn, true),
-        onEnd: () => setPlaying(btn, false),
-      });
+  function attachActions(outer: HTMLElement, md: HTMLElement, markdown: string): void {
+    const row = document.createElement("div");
+    row.className = "msg-actions";
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "msg-action copy-msg";
+    copyBtn.title = "Copy response";
+    copyBtn.innerHTML = COPY_ICON;
+    copyBtn.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(markdown);
+      copyBtn.textContent = "✓";
+      setTimeout(() => (copyBtn.innerHTML = COPY_ICON), 1500);
     });
-    outer.appendChild(btn);
+    row.appendChild(copyBtn);
+
+    if (tts.isSupported) {
+      const speakBtn = document.createElement("button");
+      speakBtn.className = "msg-action speak";
+      speakBtn.title = "Read aloud";
+      speakBtn.innerHTML = SPEAK_ICON;
+      speakBtn.addEventListener("click", async () => {
+        if (speakBtn === currentBtn) {
+          tts.stop();
+          return;
+        }
+        const prefs = await getTtsPrefs();
+        tts.speak(md.textContent ?? "", prefs, {
+          onStart: () => setPlaying(speakBtn, true),
+          onEnd: () => setPlaying(speakBtn, false),
+        });
+      });
+      row.appendChild(speakBtn);
+    }
+
+    outer.appendChild(row);
   }
 
   function appendError(message: string, openSettings: boolean): void {
@@ -149,7 +166,7 @@ export function createChatController(deps: {
     if (streamingMarkdown) {
       store.push({ role: "assistant", content: streamingMarkdown, display: streamingMarkdown });
       renderStreaming(false);
-      if (streamingEl && streamingMd) attachSpeaker(streamingEl, streamingMd);
+      if (streamingEl && streamingMd) attachActions(streamingEl, streamingMd, streamingMarkdown);
     } else {
       streamingEl?.remove();
     }
